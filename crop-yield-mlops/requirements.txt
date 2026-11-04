@@ -1,0 +1,14 @@
+# Replace this file with `pip freeze > requirements.txt` from your own venv
+# (Python 3.11) so every version is pinned exactly.
+pandas
+numpy
+scikit-learn
+xgboost
+lightgbm
+mlflow
+fastapi
+uvicorn
+pydantic
+httpx
+pytest
+ruff
