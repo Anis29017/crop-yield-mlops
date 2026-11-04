@@ -3,7 +3,7 @@
 pandas
 numpy
 scikit-learn
-xgboost
+xgboost<3.4
 lightgbm
 mlflow
 fastapi

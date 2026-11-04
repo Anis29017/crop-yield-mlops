@@ -29,6 +29,7 @@ DATA_PATH = "data/processed.csv"
 MODEL_PATH = "models/model.pkl"
 BEST_RUN_PATH = "models/best_run.json"
 EXPERIMENT = "crop-yield-m1"
+REGISTERED_NAME = "crop-yield-model"
 
 TRAIN_END = 2017
 VAL_START, VAL_END = 2018, 2020
@@ -47,12 +48,23 @@ def rmse(y_true, y_pred):
     return float(np.sqrt(mean_squared_error(y_true, y_pred)))
 
 
-def metrics(y_true, y_pred):
-    return {
+def metrics(y_true, y_pred, crops=None):
+    """Pooled metrics, plus per-crop RMSE when `crops` is given. Per-crop RMSE
+    matters because sugarcane (~60 t/ha) dominates a pooled RMSE."""
+    out = {
         "val_rmse": rmse(y_true, y_pred),
         "val_mae": float(mean_absolute_error(y_true, y_pred)),
         "val_r2": float(r2_score(y_true, y_pred)),
     }
+    if crops is not None:
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+        crops = np.asarray(crops)
+        for crop in CROPS:
+            mask = crops == crop
+            if mask.any():
+                out[f"val_rmse_{crop}"] = rmse(y_true[mask], y_pred[mask])
+    return out
 
 
 def build_pipeline(model):
@@ -111,7 +123,7 @@ def log_baseline(val):
     """Naive baseline: predict last year's yield. M1 exit criterion is to beat this."""
     with mlflow.start_run(run_name="baseline_last_year"):
         mlflow.log_param("model_type", "baseline_last_year")
-        m = metrics(val[TARGET], val["prev_yield"])
+        m = metrics(val[TARGET], val["prev_yield"], val["crop"])
         mlflow.log_metrics(m)
         print(f"baseline_last_year  val_rmse={m['val_rmse']:.4f}")
         return m["val_rmse"]
@@ -126,7 +138,7 @@ def train_one(name, cls, params, train, val):
         mlflow.log_param("model_type", name)
         mlflow.log_params(params)
         pipe.fit(train[FEATURES], train[TARGET])
-        m = metrics(val[TARGET], pipe.predict(val[FEATURES]))
+        m = metrics(val[TARGET], pipe.predict(val[FEATURES]), val["crop"])
         mlflow.log_metrics(m)
         # cloudpickle: we trained this model ourselves, so it is a trusted source
         # (newer MLflow defaults to skops, which rejects tree models).
@@ -152,6 +164,10 @@ def train(data_path=DATA_PATH, candidates=CANDIDATES):
                 "model_type": name,
                 "params": params,
             }
+
+    # Register the best run's model in the MLflow Model Registry (M1 deliverable).
+    version = mlflow.register_model(f"runs:/{best['run_id']}/model", REGISTERED_NAME)
+    print(f"Registered '{REGISTERED_NAME}' version {version.version}")
 
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     with open(MODEL_PATH, "wb") as f:

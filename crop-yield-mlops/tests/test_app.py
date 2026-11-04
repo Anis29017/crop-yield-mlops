@@ -10,11 +10,12 @@ from src.app import app, load_model
 from src.prepare_data import (
     REQUIRED_COLS,
     TARGET,
+    drop_missing_prev_yield,
     make_synthetic,
     prepare_data,
     validate,
 )
-from src.train import split
+from src.train import metrics, split
 
 VALID_INPUT = {
     "district": "Faisalabad",
@@ -75,6 +76,21 @@ def test_time_split_has_no_future_leakage():
     assert train["year"].max() <= 2017
     assert val["year"].min() >= 2018 and val["year"].max() <= 2020
     assert train["year"].max() < val["year"].min()
+
+
+def test_first_year_rows_without_prev_yield_are_dropped():
+    df = make_synthetic(n_districts=2)
+    df.loc[[0, 1], "prev_yield"] = None
+    out = drop_missing_prev_yield(df)
+    assert len(out) == len(df) - 2
+    assert out["prev_yield"].isnull().sum() == 0
+    validate(out)
+
+
+def test_metrics_include_per_crop_rmse():
+    df = make_synthetic(n_districts=2)
+    m = metrics(df[TARGET], df["prev_yield"], df["crop"])
+    assert {"val_rmse", "val_rmse_wheat", "val_rmse_sugarcane"} <= set(m)
 
 
 # ---------- model ----------

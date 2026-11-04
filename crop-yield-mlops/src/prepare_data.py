@@ -117,6 +117,17 @@ def validate(df):
     return True
 
 
+def drop_missing_prev_yield(df):
+    """Each district x crop series has no previous year for its first year, so
+    prev_yield is empty there. Drop those rows (rather than invent a value)."""
+    before = len(df)
+    df = df.dropna(subset=["prev_yield"])
+    dropped = before - len(df)
+    if dropped:
+        print(f"Dropped {dropped} rows with no prev_yield (first year of a series)")
+    return df
+
+
 def prepare_data(raw_path=RAW_PATH, out_path=OUT_PATH):
     if os.path.exists(raw_path):
         df = pd.read_csv(raw_path)
@@ -124,7 +135,7 @@ def prepare_data(raw_path=RAW_PATH, out_path=OUT_PATH):
     else:
         df = make_synthetic()
         source = "synthetic placeholder"
-    df = df[REQUIRED_COLS]
+    df = drop_missing_prev_yield(df[REQUIRED_COLS])
     validate(df)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     df.to_csv(out_path, index=False)
