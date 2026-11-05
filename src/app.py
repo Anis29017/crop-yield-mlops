@@ -8,7 +8,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from src.prepare_data import FEATURES
+from src.prepare_data import FEATURES, add_derived
 
 MODEL_PATH = os.getenv("MODEL_PATH", "models/model.pkl")
 
@@ -26,7 +26,7 @@ def load_model(path=MODEL_PATH):
     global _model
     if _model is None:
         if not os.path.exists(path):
-            raise FileNotFoundError(f"{path} not found. Run python src/train.py first.")
+            raise FileNotFoundError(f"{path} not found. Run python -m src.train first.")
         with open(path, "rb") as f:
             _model = pickle.load(f)
     return _model
@@ -34,7 +34,9 @@ def load_model(path=MODEL_PATH):
 
 class YieldInput(BaseModel):
     district: str = Field(..., min_length=1, examples=["Faisalabad"])
-    province: Literal["Punjab", "Sindh", "KP", "Balochistan"]
+    province: Literal[
+        "Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan", "Islamabad"
+    ]
     crop: Literal["wheat", "cotton", "rice", "sugarcane"]
     year: int = Field(..., ge=1980, le=2100)
     season_tmax_mean: float = Field(..., ge=-10, le=60)
@@ -46,7 +48,9 @@ class YieldInput(BaseModel):
     soil_clay: float = Field(..., ge=0, le=100)
     soil_sand: float = Field(..., ge=0, le=100)
     soil_nitrogen: float = Field(..., ge=0)
-    prev_yield: float = Field(..., ge=0)
+    prev_yield: float = Field(..., gt=0, description="Yield 1 year before (t/ha)")
+    prev2_yield: float = Field(..., gt=0, description="Yield 2 years before (t/ha)")
+    prev3_yield: float = Field(..., gt=0, description="Yield 3 years before (t/ha)")
 
 
 class YieldOutput(BaseModel):
@@ -67,7 +71,7 @@ def predict(data: YieldInput):
         model = load_model()
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
-    row = pd.DataFrame([data.model_dump()])[FEATURES]
+    row = add_derived(pd.DataFrame([data.model_dump()]))[FEATURES]
     pred = float(model.predict(row)[0])
     return YieldOutput(
         district=data.district,

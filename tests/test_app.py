@@ -7,9 +7,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.app import app, load_model
+from src.model import RecentYieldRatioRegressor
 from src.prepare_data import (
+    FEATURES,
     REQUIRED_COLS,
     TARGET,
+    add_derived,
     drop_missing_prev_yield,
     make_synthetic,
     prepare_data,
@@ -32,6 +35,8 @@ VALID_INPUT = {
     "soil_sand": 41.0,
     "soil_nitrogen": 0.7,
     "prev_yield": 3.1,
+    "prev2_yield": 3.0,
+    "prev3_yield": 2.9,
 }
 
 client = TestClient(app)
@@ -87,6 +92,18 @@ def test_first_year_rows_without_prev_yield_are_dropped():
     validate(out)
 
 
+def test_wrapper_returns_recent_average_when_change_is_zero():
+    """With a model that always predicts 'no change', the forecast is the 3-year average."""
+    from sklearn.dummy import DummyRegressor
+
+    df = add_derived(make_synthetic(n_districts=2))
+    m = RecentYieldRatioRegressor(
+        DummyRegressor(strategy="constant", constant=0.0)
+    ).fit(df[FEATURES], df[TARGET])
+    expected = df[["prev_yield", "prev2_yield", "prev3_yield"]].mean(axis=1)
+    assert m.predict(df[FEATURES]) == pytest.approx(expected.to_numpy())
+
+
 def test_metrics_include_per_crop_rmse():
     df = make_synthetic(n_districts=2)
     m = metrics(df[TARGET], df["prev_yield"], df["crop"])
@@ -99,7 +116,7 @@ def test_metrics_include_per_crop_rmse():
 @pytest.mark.skipif(not os.path.exists("models/model.pkl"), reason="run train.py first")
 def test_model_loads_and_predicts_positive_yield():
     model = load_model()
-    row = pd.DataFrame([VALID_INPUT]).drop(columns="district")
+    row = add_derived(pd.DataFrame([VALID_INPUT]))[FEATURES]
     pred = model.predict(row)
     assert len(pred) == 1
     assert pred[0] > 0
@@ -133,6 +150,11 @@ def test_predict_unknown_crop():
     assert client.post("/predict", json=bad).status_code == 422
 
 
+def test_predict_rejects_short_province_name():
+    bad = {**VALID_INPUT, "province": "KP"}  # the data uses "Khyber Pakhtunkhwa"
+    assert client.post("/predict", json=bad).status_code == 422
+
+
 def test_predict_missing_field():
-    bad = {k: v for k, v in VALID_INPUT.items() if k != "prev_yield"}
+    bad = {k: v for k, v in VALID_INPUT.items() if k != "prev3_yield"}
     assert client.post("/predict", json=bad).status_code == 422

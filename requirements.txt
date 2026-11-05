@@ -1,0 +1,30 @@
+# Full development environment. Before submitting, replace with `pip freeze > requirements.txt`
+# from your own venv so every version is pinned exactly.
+
+# data steps
+pandas
+numpy
+openpyxl          # reads the yield master .xlsx
+requests
+geopandas
+shapely
+xarray            # CHIRPS
+scipy             # CHIRPS NetCDF3 reader
+h5netcdf          # CHIRPS NetCDF4 reader
+h5py
+rasterio          # SoilGrids step only (may not install on very new Python versions)
+rasterstats       # SoilGrids step only
+
+# model + API
+scikit-learn
+xgboost<3.4
+lightgbm
+mlflow
+fastapi
+uvicorn
+pydantic
+httpx
+
+# tests + lint
+pytest
+ruff
